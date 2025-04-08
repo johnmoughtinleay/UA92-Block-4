@@ -565,7 +565,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['add_student'])) {
             $stmt->close();
 
             // 2. Insert into student
-            $stmt = $conn->prepare("INSERT INTO student (student_firstname, student_surname, student_address, student_phone_number, student_salary) VALUES (?, ?, ?, ?, ?)");
+            $stmt = $conn->prepare("INSERT INTO student (student_firstname, student_surname, student_address, student_phone_number) VALUES (?, ?, ?, ?, ?)");
             $stmt->bind_param("ssssd", $firstname, $surname, $address, $phone);
             if (!$stmt->execute()) {
                 $error = "Failed to add student: " . $stmt->error;
@@ -730,6 +730,477 @@ function cancelstudentEdit() {
 
 </body>
 </html>
+
+
+<!-- //////////////////////////////////////////////////////////////////////// -->
+<!-- Handles Parents -->
+
+<?php
+// Handle delete request
+if (isset($_GET['delete_parent_id'])) {
+    $deleteId = intval($_GET['delete_parent_id']);
+    $stmt = $conn->prepare("DELETE FROM parent_guardian WHERE parent_id = ?");
+    $stmt->bind_param("i", $deleteId);
+    $stmt->execute();
+    $stmt->close();
+    
+    
+     // 2. Delete from user table
+    $stmt = $conn->prepare("DELETE FROM user WHERE user_id = (SELECT user_id FROM user_roles WHERE parent_id = ? LIMIT 1)");
+    $stmt->bind_param("i", $deleteId);
+    $stmt->execute();
+    $stmt->close();
+             
+             // 3. Delete from parent table
+    $stmt = $conn->prepare("DELETE FROM parent_guardian WHERE parent_id = ?");
+    $stmt->bind_param("i", $deleteId);
+    $stmt->execute();
+    $stmt->close();
+             
+             // Commit transaction if all deletions are successful
+    $conn->commit();
+    $successMessage = "parent deleted successfully.";
+}
+
+// Handle ADD parent
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['add_parent'])) {
+    $firstname = $_POST['firstname'] ?? '';
+    $surname = $_POST['surname'] ?? '';
+    $address = $_POST['address'] ?? '';
+    $phone = $_POST['phone'] ?? '';
+    $email = $_POST['email'] ?? ''; // <-- added
+    $plainPassword = $_POST['password'] ?? '';
+    $userType = 'parent';
+
+    $username = ($firstname . $surname);
+    $hashedPassword = password_hash($plainPassword, PASSWORD_DEFAULT);
+
+
+    if (empty($firstname) || empty($surname) || empty($address) || empty($phone) || empty($email)) { // <-- added email check
+        $error = "All fields are required.";
+    } else {
+        // 1. Insert into `user`
+        $stmt = $conn->prepare("INSERT INTO user (username, user_hashed_password, user_type) VALUES (?, ?, ?)");
+        $stmt->bind_param("sss", $username, $hashedPassword, $userType);
+        if (!$stmt->execute()) {
+            $error = "Failed to add user: " . $stmt->error;
+            $stmt->close();
+        } else {
+            $userId = $stmt->insert_id;
+            $stmt->close();
+
+            // 2. Insert into parent
+            $stmt = $conn->prepare("INSERT INTO parent_guardian (parent_firstname, parent_surname, parent_address, parent_phone_number, parent_email) VALUES (?, ?, ?, ?, ?)"); // <-- modified
+            $stmt->bind_param("sssss", $firstname, $surname, $address, $phone, $email); // <-- modified
+            if (!$stmt->execute()) {
+                $error = "Failed to add parent: " . $stmt->error;
+                $stmt->close();
+            } else {
+                $parentId = $stmt->insert_id;
+                $stmt->close();
+
+                // 3. Insert into user_roles
+                $stmt = $conn->prepare("INSERT INTO user_roles (user_id, parent_id) VALUES (?, ?)");
+                $stmt->bind_param("ii", $userId, $parentId);
+                if ($stmt->execute()) {
+                    $successMessage = "parent added successfully.";
+                } else {
+                    $error = "Failed to add user role: " . $stmt->error;
+                }
+                $stmt->close();
+            }
+        }
+    }
+}
+
+// Handle edit request
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['edit_parent'])) {
+    $editId = intval($_POST['edit_parent_id']);
+    $firstname = $_POST['edit_parent_firstname'] ?? '';
+    $surname = $_POST['edit_parent_surname'] ?? '';
+    $address = $_POST['edit_parent_address'] ?? '';
+    $phone = $_POST['edit_parent_phone'] ?? '';
+    $email = $_POST['edit_email'] ?? ''; // <-- added
+
+    if (empty($firstname) || empty($surname) || empty($address) || empty($phone) || empty($email)) { // <-- added email check
+        $error = "All fields are required for editing.";
+    } else {
+        $stmt = $conn->prepare("UPDATE parent_guardian SET parent_firstname=?, parent_surname=?, parent_address=?, parent_phone_number=?, parent_email=? WHERE parent_id=?"); // <-- modified
+        $stmt->bind_param("sssssi", $firstname, $surname, $address, $phone, $email, $editId); // <-- modified
+
+        if ($stmt->execute()) {
+            $successMessage = "parent updated successfully.";
+        } else {
+            $error = "Error updating parent: " . $stmt->error;
+        }
+        $stmt->close();
+    }
+}
+
+// Fetch all parents
+$parents = $conn->query("SELECT * FROM parent_guardian");
+?>
+
+<html lang="en">
+<body>
+<div class="container col-6">
+    <?php if ($successMessage): ?>
+        <p class="text-success"><?= $successMessage ?></p>
+    <?php endif; ?>
+    <?php if ($error): ?>
+        <p class="text-danger"><?= $error ?></p>
+    <?php endif; ?>
+
+    <button class="btn btn-primary mb-3" onclick="toggleparentSection()">Manage parents</button>
+
+    <!-- Add parent Form -->
+    <div id="addparentFormContainer" style="display: none;">
+        <h2>Add parent</h2>
+        <form method="post">
+            <input type="hidden" name="add_parent" value="1">
+            First Name: <input class="form-control" type="text" name="firstname"><br>
+            Surname: <input class="form-control" type="text" name="surname"><br>
+            Address: <input class="form-control" type="text" name="address"><br>
+            Phone: <input class="form-control" type="text" name="phone"><br>
+            Email: <input class="form-control" type="email" name="email"><br> <!-- added -->
+            Password: <input class="form-control" type="password" name="password"><br>
+            <input class="btn btn-success" type="submit" value="Add parent">
+        </form>
+        <hr>
+    </div>
+
+    <!-- Edit parent Form -->
+    <div id="editparentFormContainer" style="display: none;">
+        <h2>Edit parent</h2>
+        <form method="post">
+            <input type="hidden" name="edit_parent" value="1">
+            <input type="hidden" id="edit_parent_id" name="edit_parent_id">
+            First Name: <input class="form-control" type="text" id="edit_parent_firstname" name="edit_parent_firstname"><br>
+            Surname: <input class="form-control" type="text" id="edit_parent_surname" name="edit_parent_surname"><br>
+            Address: <input class="form-control" type="text" id="edit_parent_address" name="edit_parent_address"><br>
+            Phone: <input class="form-control" type="text" id="edit_parent_phone" name="edit_parent_phone"><br>
+            Email: <input class="form-control" type="email" id="edit_parent_email" name="edit_email"><br> <!-- added -->
+            <input class="btn btn-warning" type="submit" value="Update parent">
+            <button class="btn btn-secondary" type="button" onclick="cancelparentEdit()">Cancel</button>
+        </form>
+        <hr>
+    </div>
+
+    <!-- parent Table -->
+    <div id="parentTableContainer" style="display: none;">
+        <h2>Existing parents</h2>
+        <table class="table table-bordered">
+            <tr>
+                <th class="table-primary">ID</th>
+                <th class="table-primary">First Name</th>
+                <th class="table-primary">Surname</th>
+                <th class="table-primary">Address</th>
+                <th class="table-primary">Phone</th>
+                <th class="table-primary">Email</th> <!-- added -->
+                <th class="table-warning">Edit</th>
+                <th class="table-danger">Delete</th>
+            </tr>
+            <?php $parents->data_seek(0); while ($row = $parents->fetch_assoc()): ?>
+                <tr>
+                    <td class="table-primary"><?= $row['parent_id'] ?></td>
+                    <td class="table-primary"><?= $row['parent_firstname'] ?></td>
+                    <td class="table-primary"><?= $row['parent_surname'] ?></td>
+                    <td class="table-primary"><?= $row['parent_address'] ?></td>
+                    <td class="table-primary"><?= $row['parent_phone_number'] ?></td>
+                    <td class="table-primary"><?= $row['parent_email'] ?></td> <!-- added -->
+                    <td class="table-warning">
+                        <a href="javascript:void(0);" onclick="showparentEditForm(
+                            <?= $row['parent_id'] ?>,
+                            '<?= htmlspecialchars($row['parent_firstname'], ENT_QUOTES) ?>',
+                            '<?= htmlspecialchars($row['parent_surname'], ENT_QUOTES) ?>',
+                            '<?= htmlspecialchars($row['parent_address'], ENT_QUOTES) ?>',
+                            '<?= htmlspecialchars($row['parent_phone_number'], ENT_QUOTES) ?>',
+                            '<?= htmlspecialchars($row['parent_email'], ENT_QUOTES) ?>' // added
+                        )">Edit</a>
+                    </td>
+                    <td class="table-danger">
+                        <a href="?delete_parent_id=<?= $row['parent_id'] ?>" onclick="return confirm('Are you sure you want to delete this parent?');">Delete</a>
+                    </td>
+                </tr>
+            <?php endwhile; ?>
+        </table>
+    </div>
+</div>
+
+<script>
+function toggleparentSection() {
+    const addForm = document.getElementById("addparentFormContainer");
+    const table = document.getElementById("parentTableContainer");
+    const editForm = document.getElementById("editparentFormContainer");
+
+    const isVisible = addForm.style.display === "block";
+
+    addForm.style.display = isVisible ? "none" : "block";
+    table.style.display = isVisible ? "none" : "block";
+    editForm.style.display = "none"; // hide edit if toggling
+}
+
+function showparentEditForm(parentId, firstname, surname, address, phone, email) {
+    document.getElementById("edit_parent_id").value = parentId;
+    document.getElementById("edit_parent_firstname").value = firstname;
+    document.getElementById("edit_parent_surname").value = surname;
+    document.getElementById("edit_parent_address").value = address;
+    document.getElementById("edit_parent_phone").value = phone;
+    document.getElementById("edit_parent_email").value = email; 
+    document.getElementById("editparentFormContainer").style.display = "block";
+    document.getElementById("addparentFormContainer").style.display = "none";
+    document.getElementById("parentTableContainer").style.display = "none";
+}
+
+function cancelparentEdit() {
+    document.getElementById("editparentFormContainer").style.display = "none";
+    document.getElementById("addparentFormContainer").style.display = "block";
+    document.getElementById("parentTableContainer").style.display = "block";
+}
+</script>
+
+</body>
+</html>
+
+
+<!-- //////////////////////////////////////////////////////////////////////// -->
+<!-- Handles admins -->
+
+
+
+<?php
+// Handle delete request
+if (isset($_GET['delete_admin_id'])) {
+    $deleteId = intval($_GET['delete_admin_id']);
+    $stmt = $conn->prepare("DELETE FROM admin WHERE admin_id = ?");
+    $stmt->bind_param("i", $deleteId);
+    $stmt->execute();
+    $stmt->close();
+    
+    
+     // 2. Delete from user table
+    $stmt = $conn->prepare("DELETE FROM user WHERE user_id = (SELECT user_id FROM user_roles WHERE admin_id = ? LIMIT 1)");
+    $stmt->bind_param("i", $deleteId);
+    $stmt->execute();
+    $stmt->close();
+             
+             // 3. Delete from admin table
+    $stmt = $conn->prepare("DELETE FROM admin WHERE admin_id = ?");
+    $stmt->bind_param("i", $deleteId);
+    $stmt->execute();
+    $stmt->close();
+             
+             // Commit transaction if all deletions are successful
+    $conn->commit();
+    $successMessage = "admin deleted successfully.";
+}
+
+// Handle ADD admin
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['add_admin'])) {
+    $firstname = $_POST['firstname'] ?? '';
+    $surname = $_POST['surname'] ?? '';
+    $address = $_POST['address'] ?? '';
+    $phone = $_POST['phone'] ?? '';
+    $salary = $_POST['salary'] ?? '';
+    $plainPassword = $_POST['password'] ?? '';
+    $userType = 'admin';
+
+    $username = ($firstname . $surname);
+    $hashedPassword = password_hash($plainPassword, PASSWORD_DEFAULT);
+
+
+    if (empty($firstname) || empty($surname) || empty($address) || empty($phone) || empty($salary)) {
+        $error = "All fields are required.";
+    } else {
+        // 1. Insert into `user`
+        $stmt = $conn->prepare("INSERT INTO user (username, user_hashed_password, user_type) VALUES (?, ?, ?)");
+        $stmt->bind_param("sss", $username, $hashedPassword, $userType);
+        if (!$stmt->execute()) {
+            $error = "Failed to add user: " . $stmt->error;
+            $stmt->close();
+        } else {
+            $userId = $stmt->insert_id;
+            $stmt->close();
+
+            // 2. Insert into admin
+            $stmt = $conn->prepare("INSERT INTO admin (admin_firstname, admin_surname, admin_address, admin_phone_number, admin_salary) VALUES (?, ?, ?, ?, ?)");
+            $stmt->bind_param("ssssd", $firstname, $surname, $address, $phone, $salary);
+            if (!$stmt->execute()) {
+                $error = "Failed to add admin: " . $stmt->error;
+                $stmt->close();
+            } else {
+                $adminId = $stmt->insert_id;
+                $stmt->close();
+
+                // 3. Insert into user_roles
+                $stmt = $conn->prepare("INSERT INTO user_roles (user_id, admin_id) VALUES (?, ?)");
+                $stmt->bind_param("ii", $userId, $adminId);
+                if ($stmt->execute()) {
+                    $successMessage = "admin added successfully.";
+                } else {
+                    $error = "Failed to add user role: " . $stmt->error;
+                }
+                $stmt->close();
+            }
+        }
+    }
+}
+
+// Handle edit request
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['edit_admin'])) {
+    $editId = intval($_POST['edit_admin_id']);
+    $firstname = $_POST['edit_admin_firstname'] ?? '';
+    $surname = $_POST['edit_admin_surname'] ?? '';
+    $address = $_POST['edit_admin_address'] ?? '';
+    $phone = $_POST['edit_admin_phone'] ?? '';
+    $salary = $_POST['edit_salary'] ?? '';
+
+    if (empty($firstname) || empty($surname) || empty($address) || empty($phone) || empty($salary)) {
+        $error = "All fields are required for editing.";
+    } else {
+        $stmt = $conn->prepare("UPDATE admin SET admin_firstname=?, admin_surname=?, admin_address=?, admin_phone_number=?, admin_salary=? WHERE admin_id=?");
+        $stmt->bind_param("ssssdi", $firstname, $surname, $address, $phone, $salary, $editId);
+
+        if ($stmt->execute()) {
+            $successMessage = "admin updated successfully.";
+        } else {
+            $error = "Error updating admin: " . $stmt->error;
+        }
+        $stmt->close();
+    }
+}
+
+// Fetch all admins
+$admins = $conn->query("SELECT * FROM admin");
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Admin Page</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+<div class="container col-6">
+    <?php if ($successMessage): ?>
+        <p class="text-success"><?= $successMessage ?></p>
+    <?php endif; ?>
+    <?php if ($error): ?>
+        <p class="text-danger"><?= $error ?></p>
+    <?php endif; ?>
+
+    <button class="btn btn-primary mb-3" onclick="toggleadminSection()">Manage admins</button>
+
+    <!-- Add admin Form -->
+    <div id="addadminFormContainer" style="display: none;">
+        <h2>Add admin</h2>
+        <form method="post">
+            <input type="hidden" name="add_admin" value="1">
+            First Name: <input class="form-control" type="text" name="firstname"><br>
+            Surname: <input class="form-control" type="text" name="surname"><br>
+            Address: <input class="form-control" type="text" name="address"><br>
+            Phone: <input class="form-control" type="text" name="phone"><br>
+            Salary: <input class="form-control" type="text" name="salary"><br>
+            Password: <input class="form-control" type="password" name="password"><br>
+            <input class="btn btn-success" type="submit" value="Add admin">
+        </form>
+        <hr>
+    </div>
+
+    <!-- Edit admin Form -->
+    <div id="editadminFormContainer" style="display: none;">
+        <h2>Edit admin</h2>
+        <form method="post">
+            <input type="hidden" name="edit_admin" value="1">
+            <input type="hidden" id="edit_admin_id" name="edit_admin_id">
+            First Name: <input class="form-control" type="text" id="edit_admin_firstname" name="edit_firstname"><br>
+            Surname: <input class="form-control" type="text" id="edit_admin_surname" name="edit_surname"><br>
+            Address: <input class="form-control" type="text" id="edit_admin_address" name="edit_address"><br>
+            Phone: <input class="form-control" type="text" id="edit_admin_phone" name="edit_phone"><br>
+            Salary: <input class="form-control" type="text" id="edit_admin_salary" name="edit_salary"><br>
+            <input class="btn btn-warning" type="submit" value="Update admin">
+            <button class="btn btn-secondary" type="button" onclick="canceladminEdit()">Cancel</button>
+        </form>
+        <hr>
+    </div>
+
+    <!-- admin Table -->
+    <div id="adminTableContainer" style="display: none;">
+        <h2>Existing admins</h2>
+        <table class="table table-bordered">
+            <tr>
+                <th class="table-primary">ID</th>
+                <th class="table-primary">First Name</th>
+                <th class="table-primary">Surname</th>
+                <th class="table-primary">Address</th>
+                <th class="table-primary">Phone</th>
+                <th class="table-primary">Salary</th>
+                <th class="table-warning">Edit</th>
+                <th class="table-danger">Delete</th>
+            </tr>
+            <?php $admins->data_seek(0); while ($row = $admins->fetch_assoc()): ?>
+                <tr>
+                    <td class="table-primary"><?= $row['admin_id'] ?></td>
+                    <td class="table-primary"><?= $row['admin_firstname'] ?></td>
+                    <td class="table-primary"><?= $row['admin_surname'] ?></td>
+                    <td class="table-primary"><?= $row['admin_address'] ?></td>
+                    <td class="table-primary"><?= $row['admin_phone_number'] ?></td>
+                    <td class="table-primary"><?= $row['admin_salary'] ?></td>
+                    <td class="table-warning">
+                        <a href="javascript:void(0);" onclick="showadminEditForm(
+                            <?= $row['admin_id'] ?>,
+                            '<?= htmlspecialchars($row['admin_firstname'], ENT_QUOTES) ?>',
+                            '<?= htmlspecialchars($row['admin_surname'], ENT_QUOTES) ?>',
+                            '<?= htmlspecialchars($row['admin_address'], ENT_QUOTES) ?>',
+                            '<?= htmlspecialchars($row['admin_phone_number'], ENT_QUOTES) ?>',
+                            <?= $row['admin_salary'] ?>
+                        )">Edit</a>
+                    </td>
+                    <td class="table-danger">
+                        <a href="?delete_admin_id=<?= $row['admin_id'] ?>" onclick="return confirm('Are you sure you want to delete this admin?');">Delete</a>
+                    </td>
+                </tr>
+            <?php endwhile; ?>
+        </table>
+    </div>
+</div>
+
+<script>
+function toggleadminSection() {
+    const addForm = document.getElementById("addadminFormContainer");
+    const table = document.getElementById("adminTableContainer");
+    const editForm = document.getElementById("editadminFormContainer");
+
+    const isVisible = addForm.style.display === "block";
+
+    addForm.style.display = isVisible ? "none" : "block";
+    table.style.display = isVisible ? "none" : "block";
+    editForm.style.display = "none"; // hide edit if toggling
+}
+
+function showadminEditForm(adminId, firstname, surname, address, phone, salary) {
+    document.getElementById("edit_admin_id").value = adminId;
+    document.getElementById("edit_admin_firstname").value = firstname;
+    document.getElementById("edit_admin_surname").value = surname;
+    document.getElementById("edit_admin_address").value = address;
+    document.getElementById("edit_admin_phone").value = phone;
+    document.getElementById("edit_admin_salary").value = salary;
+
+    document.getElementById("editadminFormContainer").style.display = "block";
+    document.getElementById("addadminFormContainer").style.display = "none";
+    document.getElementById("adminTableContainer").style.display = "none";
+}
+
+function canceladminEdit() {
+    document.getElementById("editadminFormContainer").style.display = "none";
+    document.getElementById("addadminFormContainer").style.display = "block";
+    document.getElementById("adminTableContainer").style.display = "block";
+}
+</script>
+
+</body>
+</html>
+
 
 <?php
 $conn->close();
