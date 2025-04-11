@@ -5,13 +5,13 @@ session_start();
 if (isset($_GET['logout'])) {
     session_unset();
     session_destroy();
-    header("Location: login.php");
+    header("Location: index.php");
     exit;
 }
 
 // Redirect if not logged in or not admin
 if (!isset($_SESSION['username']) || $_SESSION['user_type'] !== 'teacher') {
-    header("Location: login.php");
+    header("Location: index.php");
     exit();
 }
 
