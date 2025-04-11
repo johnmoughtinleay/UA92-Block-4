@@ -11,12 +11,12 @@ $conn = new mysqli($servername, $username, $password, $database);
 if (isset($_GET['logout'])) {
     session_unset();
     session_destroy();
-    header("Location: login.php");
+    header("Location: index.php");
     exit;
 }
 
 if (!isset($_SESSION['username']) || !isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'student') {
-    header("Location: login.php");
+    header("Location: index.php");
     exit();
 }
 
