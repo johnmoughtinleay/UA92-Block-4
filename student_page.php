@@ -1,13 +1,13 @@
 <?php
 session_start();
-
+//connects to server
 $servername = "localhost";
 $username = "root";
 $password = "";
 $database = "St_Alphonsus_Primary_School";
 
 $conn = new mysqli($servername, $username, $password, $database);
-
+//logs user out when ran
 if (isset($_GET['logout'])) {
     session_unset();
     session_destroy();
@@ -35,6 +35,7 @@ if (isset($_SESSION['student_id'])) {
 <html lang="en">
 <head>
     <title>Student Page</title>
+    <!--links the stylesheet and bootstrap-->
     <link rel="stylesheet" href="School.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -46,9 +47,9 @@ if (isset($_SESSION['student_id'])) {
         <a href="?logout=true" class="btn btn-danger">Logout</a>
     </div>
     <h1 class="mb-4 text-center">St Alphonsus Primary School</h1>
-    <h2 class="text-center">Welcome, <?= htmlspecialchars($studentData['student_firstname']) ?>!</h2>
+    <h2 class="text-center">Welcome, <?= htmlspecialchars($studentData['student_firstname']) ?>!</h2> <!--displays welcome then their name-->
 
-    <div class="card mt-4">
+    <div class="card mt-4"> <!--displays the users details-->
         <div class="card-header">Your Details</div>
         <div class="card-body">
             <p><strong>Student ID:</strong> <?= htmlspecialchars($studentData['student_id']) ?></p>
