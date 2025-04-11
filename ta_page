@@ -14,7 +14,7 @@ if (!isset($_SESSION['username']) || $_SESSION['user_type'] !== 'ta') {
     header("Location: index.php");
     exit();
 }
-
+//connects to server
 $servername = "localhost";
 $username = "root";
 $password = "";
@@ -34,13 +34,14 @@ $error = "";
 
 <html lang="en">
 <head>
+    <!-- links stylesheet and bootstrap-->
     <title>Admin Page</title>
     <link rel="stylesheet" href="School.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <body>
-
+<!-- creates container which contains all content-->
 <div class="container col-6">
     <div class="text-end mb-3">
     <a href="?logout=true" class="btn btn-danger">Logout</a>
@@ -62,14 +63,11 @@ if (isset($_GET['delete_student_id'])) {
     $stmt->close();
     
     
-     // 2. Delete from user table
+     // Delete from user table
     $stmt = $conn->prepare("DELETE FROM user WHERE user_id = (SELECT user_id FROM user_roles WHERE student_id = ? LIMIT 1)");
     $stmt->bind_param("i", $deleteId);
     $stmt->execute();
     $stmt->close();
-             
-
-             // Commit transaction if all deletions are successful
     $conn->commit();
     $successMessage = "student deleted successfully.";
 }
@@ -86,11 +84,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['add_student'])) {
 
     $username = ($firstname . $surname);
     $hashedPassword = password_hash($plainPassword, PASSWORD_DEFAULT);
-
+//checks if forms complete
     if (empty($firstname) || empty($surname) || empty($address) || empty($phone)) {
         $error = "All fields are required.";
     } else {
-        // 1. Insert into `user`
+        //Insert into user
         $stmt = $conn->prepare("INSERT INTO user (username, user_hashed_password, user_type) VALUES (?, ?, ?)");
         $stmt->bind_param("sss", $username, $hashedPassword, $userType);
         if (!$stmt->execute()) {
@@ -100,7 +98,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['add_student'])) {
             $userId = $stmt->insert_id;
             $stmt->close();
 
-            // 2. Insert into student
+            // Insert into student
             $stmt = $conn->prepare("INSERT INTO student (student_firstname, student_surname, student_address, student_phone_number, class_id) VALUES (?, ?, ?, ?, ?)");
             $stmt->bind_param("sssdi", $firstname, $surname, $address, $phone, $classId);
             if (!$stmt->execute()) {
@@ -110,7 +108,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['add_student'])) {
                 $studentId = $stmt->insert_id;
                 $stmt->close();
 
-                // 3. Insert into user_roles
+                //Insert into user_roles
                 $stmt = $conn->prepare("INSERT INTO user_roles (user_id, student_id) VALUES (?, ?)");
                 $stmt->bind_param("ii", $userId, $studentId);
                 if ($stmt->execute()) {
@@ -132,7 +130,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['edit_student'])) {
     $address = $_POST['edit_student_address'] ?? '';
     $phone = $_POST['edit_student_phone'] ?? '';
     $classId = $_POST['edit_class_id'] ?? null;
-
+//checks if form is complete
     if (empty($firstname) || empty($surname) || empty($address) || empty($phone)) {
         $error = "All fields are required for editing.";
     } elseif (!preg_match("/^[0-9]{10}$/", $phone)) { // Ensure phone number is a 10-digit number
@@ -157,7 +155,7 @@ $students = $conn->query("SELECT * FROM student");
 <html>
 <body>
     <p>Manage Students</p>
-
+    <!--toggles if student is visible when clicked-->
     <button class="btn btn-primary mb-3" onclick="togglestudentSection()">Manage students</button>
 
     <!-- Add student Form -->
@@ -188,7 +186,7 @@ $students = $conn->query("SELECT * FROM student");
             Phone: <input class="form-control" type="text" id="edit_student_phone" name="edit_student_phone"><br>
             Class ID: <input class="form-control" type="number" id="edit_student_class_id" name="edit_class_id"><br>
             <input class="btn btn-warning" type="submit" value="Update student">
-            <button class="btn btn-secondary" type="button" onclick="cancelstudentEdit()">Cancel</button>
+            <button class="btn btn-secondary" type="button" onclick="cancelstudentEdit()">Cancel</button> <!--cancels edit-->
         </form>
         <hr>
     </div>
@@ -207,7 +205,7 @@ $students = $conn->query("SELECT * FROM student");
                 <th class="table-warning">Edit</th>
                 <th class="table-danger">Delete</th>
             </tr>
-            <?php $students->data_seek(0); while ($row = $students->fetch_assoc()): ?>
+            <?php $students->data_seek(0); while ($row = $students->fetch_assoc()): ?> <!--fills out rows in table-->
                 <tr>
                     <td class="table-primary"><?= $row['student_id'] ?></td>
                     <td class="table-primary"><?= $row['student_firstname'] ?></td>
@@ -216,7 +214,7 @@ $students = $conn->query("SELECT * FROM student");
                     <td class="table-primary"><?= $row['student_phone_number'] ?></td>
                     <td class="table-primary"><?= $row['class_id'] ?></td>
                     <td class="table-warning">
-                        <a href="javascript:void(0);" onclick="showstudentEditForm(
+                        <a href="javascript:void(0);" onclick="showstudentEditForm( //shows edit form and enters current values
                             <?= $row['student_id'] ?>,
                             '<?= htmlspecialchars($row['student_firstname'], ENT_QUOTES) ?>',
                             '<?= htmlspecialchars($row['student_surname'], ENT_QUOTES) ?>',
@@ -234,7 +232,7 @@ $students = $conn->query("SELECT * FROM student");
     </div>
 
 <script>
-function togglestudentSection() {
+function togglestudentSection() { //toggles if students is visible
     const addForm = document.getElementById("addstudentFormContainer");
     const table = document.getElementById("studentTableContainer");
     const editForm = document.getElementById("editstudentFormContainer");
@@ -243,10 +241,10 @@ function togglestudentSection() {
 
     addForm.style.display = isVisible ? "none" : "block";
     table.style.display = isVisible ? "none" : "block";
-    editForm.style.display = "none"; // hide edit if toggling
+    editForm.style.display = "none"; 
 }
 
-function showstudentEditForm(studentId, firstname, surname, address, phone, classId) {
+function showstudentEditForm(studentId, firstname, surname, address, phone, classId) {//shows edit form
     document.getElementById("edit_student_id").value = studentId;
     document.getElementById("edit_student_firstname").value = firstname;
     document.getElementById("edit_student_surname").value = surname;
@@ -259,7 +257,7 @@ function showstudentEditForm(studentId, firstname, surname, address, phone, clas
     document.getElementById("studentTableContainer").style.display = "none";
 }
 
-function cancelstudentEdit() {
+function cancelstudentEdit() { //hides edit form
     document.getElementById("editstudentFormContainer").style.display = "none";
     document.getElementById("addstudentFormContainer").style.display = "block";
     document.getElementById("studentTableContainer").style.display = "block";
@@ -281,7 +279,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['edit_class'])) {
 
     if (empty($name) || $capacity <= 0) {
         $error = "All fields are required with valid values.";
-    } else {
+    } else { //updates class
         $stmt = $conn->prepare("UPDATE class SET class_name=?, class_capacity=?, teacher_id=?, ta_id=? WHERE class_id=?");
         $stmt->bind_param("siiii", $name, $capacity, $teacher_id, $ta_id, $editId);
         if ($stmt->execute()) {
@@ -314,7 +312,7 @@ $tas = $conn->query("SELECT ta_id, ta_firstname FROM teaching_assistant");
         Teacher ID: <input class="form-control" type="number" id="edit_teacher_id_class" name="edit_teacher_id_class"><br>
         TA ID: <input class="form-control" type="number" id="edit_ta_id_class" name="edit_ta_id_class"><br>
         <input class="btn btn-warning" type="submit" value="Update Class">
-        <button class="btn btn-secondary" type="button" onclick="cancelClassEdit()">Cancel</button>
+        <button class="btn btn-secondary" type="button" onclick="cancelClassEdit()">Cancel</button> <!--cancels edit when clicked-->
     </form>
     <hr>
 </div>
@@ -331,7 +329,7 @@ $tas = $conn->query("SELECT ta_id, ta_firstname FROM teaching_assistant");
             <th class="table-primary">TA ID</th>
             <th class="table-warning">Edit</th>
         </tr>
-        <?php $classes->data_seek(0); while ($row = $classes->fetch_assoc()): ?>
+        <?php $classes->data_seek(0); while ($row = $classes->fetch_assoc()): ?> <!--fills out table-->
             <tr>
                 <td><?= $row['class_id'] ?></td>
                 <td><?= htmlspecialchars($row['class_name']) ?></td>
@@ -360,7 +358,7 @@ $tas = $conn->query("SELECT ta_id, ta_firstname FROM teaching_assistant");
 </div>
 </div>
 <script>
-function toggleClassSection() {
+function toggleClassSection() { //toggles class visibility
     const table = document.getElementById("classTableContainer");
     const editForm = document.getElementById("editClassFormContainer");
 
@@ -370,8 +368,7 @@ function toggleClassSection() {
     editForm.style.display = "none";
 }
 
-function showClassEditForm(id, name, capacity, teacher_Id, ta_Id) {
-    // Set the values into the form fields
+function showClassEditForm(id, name, capacity, teacher_Id, ta_Id) { //shows edit form
     document.getElementById("edit_class_id").value = id;
     document.getElementById("edit_class_name").value = name;
     document.getElementById("edit_class_capacity").value = capacity;
@@ -383,7 +380,7 @@ function showClassEditForm(id, name, capacity, teacher_Id, ta_Id) {
 }
 
 
-function cancelClassEdit() {
+function cancelClassEdit() { //cancels edit
     document.getElementById("editClassFormContainer").style.display = "none";
     document.getElementById("classTableContainer").style.display = "block";
 }
