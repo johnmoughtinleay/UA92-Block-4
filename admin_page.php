@@ -3,6 +3,14 @@
 <?php
 session_start();
 
+//logs user out 
+if (isset($_GET['logout'])) {
+    session_unset();
+    session_destroy();
+    header("Location: login.php");
+    exit;
+}
+
 // Redirect if not logged in or not admin
 if (!isset($_SESSION['username']) || $_SESSION['user_type'] !== 'admin') {
     header("Location: login.php");
@@ -38,35 +46,43 @@ if (isset($_GET['delete_ta_id'])) {
     $stmt->close();
     
     $successMessage = "Teaching Assistant deleted successfully.";
-
-     // 2. Delete from user table
+    
+    //Delete from user table
     $stmt = $conn->prepare("DELETE FROM user WHERE user_id = (SELECT user_id FROM user_roles WHERE ta_id = ? LIMIT 1)");
     $stmt->bind_param("i", $deleteId);
     $stmt->execute();
     $stmt->close();
+    
+    // Delete from user_roles table
+    $stmt = $conn->prepare("DELETE FROM user_roles WHERE ta_id = ?");
+    $stmt->bind_param("i", $deleteId);
+    $stmt->execute();
+    $stmt->close();         
             
-            
-            // Commit transaction if all deletions are successful
+    // Commit transaction if all deletions are successful
     $conn->commit();
 }
 
 // Handle Add TA
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['add_ta'])) {
-    $firstname = $_POST['firstname'] ?? '';
-    $surname = $_POST['surname'] ?? '';
-    $address = $_POST['address'] ?? '';
-    $phone = $_POST['phone'] ?? '';
-    $salary = $_POST['salary'] ?? '';
+    $firstname = trim($_POST['firstname'] ?? '');
+    $surname = trim($_POST['surname'] ?? '');
+    $address = trim($_POST['address'] ?? '');
+    $phone = trim($_POST['phone'] ?? '');
+    $salary = trim($_POST['salary'] ?? '');
     $plainPassword = $_POST['password'] ?? '';
     $userType = 'ta';
 
-    // Simulate or create username/password (you may collect these from a form)
     $username = ($firstname . $surname);
     $hashedPassword = password_hash($plainPassword, PASSWORD_DEFAULT);
 
-
-    if (empty($firstname) || empty($surname) || empty($address) || empty($phone) || empty($salary)) {
+    // Validate inputs
+    if (empty($firstname) || empty($surname) || empty($address) || empty($phone) || empty($salary) || empty($plainPassword)) {
         $error = "All fields are required.";
+    } elseif (!preg_match("/^[0-9]{10}$/", $phone)) { // Ensure phone number is a 10-digit number
+        $error = "Phone number must be 10 digits.";
+    } elseif (!is_numeric($salary) || $salary <= 0) { // Ensure salary is a positive number
+        $error = "Salary must be a positive number.";
     } else {
         // 1. Insert into `user`
         $stmt = $conn->prepare("INSERT INTO user (username, user_hashed_password, user_type) VALUES (?, ?, ?)");
@@ -102,18 +118,22 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['add_ta'])) {
     }
 }
 
-
 // Handle edit request
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['edit_ta'])) {
     $editId = intval($_POST['edit_ta_id']);
-    $firstname = $_POST['edit_ta_firstname'] ?? '';
-    $surname = $_POST['edit_ta_surname'] ?? '';
-    $address = $_POST['edit_ta_address'] ?? '';
-    $phone = $_POST['edit_ta_phone'] ?? '';
-    $salary = $_POST['edit_ta_salary'] ?? '';
+    $firstname = trim($_POST['edit_ta_firstname'] ?? '');
+    $surname = trim($_POST['edit_ta_surname'] ?? '');
+    $address = trim($_POST['edit_ta_address'] ?? '');
+    $phone = trim($_POST['edit_ta_phone'] ?? '');
+    $salary = trim($_POST['edit_ta_salary'] ?? '');
 
+    // Validate inputs
     if (empty($firstname) || empty($surname) || empty($address) || empty($phone) || empty($salary)) {
         $error = "All fields are required for editing.";
+    } elseif (!preg_match("/^[0-9]{10}$/", $phone)) { // Ensure phone number is a 10-digit number
+        $error = "Phone number must be 10 digits.";
+    } elseif (!is_numeric($salary) || $salary <= 0) { // Ensure salary is a positive number
+        $error = "Salary must be a positive number.";
     } else {
         $stmt = $conn->prepare("UPDATE Teaching_Assistant SET ta_firstname=?, ta_surname=?, ta_address=?, ta_phone_number=?, ta_salary=? WHERE ta_id=?");
         $stmt->bind_param("ssssdi", $firstname, $surname, $address, $phone, $salary, $editId);
@@ -135,19 +155,22 @@ $tas = $conn->query("SELECT * FROM Teaching_Assistant");
 <html lang="en">
 <head>
     <title>Admin Page</title>
+    <link rel="stylesheet" href="School.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
 </head>
 <body>
+
 <div class="container col-6">
-    <h1 class="mt-4">Admin Dashboard</h1>
+    <div class="text-end mb-3">
+        <a href="?logout=true" class="btn btn-danger">Logout</a>
+    </div>
+    <h1 class="mb-4 text-center">St Alphonsus Primary School</h1>
+    <h2 class="mt-4">Admin Dashboard</h2>
 
-    <?php if ($successMessage): ?>
-        <p class="text-success"><?= $successMessage ?></p>
-    <?php endif; ?>
-    <?php if ($error): ?>
-        <p class="text-danger"><?= $error ?></p>
-    <?php endif; ?>
-
+    <p>This is the admin dashboard. Here you can make add, edit, or delete from Teaching Assistant, Teachers, Students, Parents, Admins and Classes!<p>
+    
+    <p>Manage Teaching Assistant</p>
     <button class="btn btn-primary mb-3" onclick="toggleTASection()">Manage Teaching Assistants</button>
 
     <!-- Add TA Form -->
@@ -222,7 +245,6 @@ $tas = $conn->query("SELECT * FROM Teaching_Assistant");
             <?php endwhile; ?>
         </table>
     </div>
-</div>
 
 <script>
 function toggleTASection() {
@@ -258,8 +280,7 @@ function cancelTaEdit() {
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+
 
 
 
@@ -277,14 +298,17 @@ if (isset($_GET['delete_teacher_id'])) {
     $stmt->execute();
     $stmt->close();
     
-    
-     // 2. Delete from user table
+     //Delete from user table
     $stmt = $conn->prepare("DELETE FROM user WHERE user_id = (SELECT user_id FROM user_roles WHERE teacher_id = ? LIMIT 1)");
     $stmt->bind_param("i", $deleteId);
     $stmt->execute();
     $stmt->close();
              
-             
+     //Delete from user_roles table
+    $stmt = $conn->prepare("DELETE FROM user_roles WHERE teacher_id = ?");
+    $stmt->bind_param("i", $deleteId);
+    $stmt->execute();
+    $stmt->close();         
              // Commit transaction if all deletions are successful
     $conn->commit();
     $successMessage = "Teacher deleted successfully.";
@@ -292,21 +316,25 @@ if (isset($_GET['delete_teacher_id'])) {
 
 // Handle ADD Teacher
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['add_teacher'])) {
-    $firstname = $_POST['firstname'] ?? '';
-    $surname = $_POST['surname'] ?? '';
-    $address = $_POST['address'] ?? '';
-    $phone = $_POST['phone'] ?? '';
-    $salary = $_POST['salary'] ?? '';
+    $firstname = trim($_POST['firstname'] ?? '');
+    $surname = trim($_POST['surname'] ?? '');
+    $address = trim($_POST['address'] ?? '');
+    $phone = trim($_POST['phone'] ?? '');
+    $salary = trim($_POST['salary'] ?? '');
     $plainPassword = $_POST['password'] ?? '';
     $userType = 'teacher';
 
-    $username = ($firstname . $surname);
-    $hashedPassword = password_hash($plainPassword, PASSWORD_DEFAULT);
+    $username = $firstname . $surname;
 
-
-    if (empty($firstname) || empty($surname) || empty($address) || empty($phone) || empty($salary)) {
+    if (empty($firstname) || empty($surname) || empty($address) || empty($phone) || empty($salary) || empty($plainPassword)) {
         $error = "All fields are required.";
-    } else {
+    } elseif (!preg_match("/^[0-9]{10}$/", $phone)) { // Ensure phone number is a 10-digit number
+        $error = "Phone number must be 10 digits.";
+    } elseif (!is_numeric($salary) || $salary <= 0) { // Ensure salary is a positive number
+        $error = "Salary must be a positive number.";
+    } else{
+        $hashedPassword = password_hash($plainPassword, PASSWORD_DEFAULT);
+
         // 1. Insert into `user`
         $stmt = $conn->prepare("INSERT INTO user (username, user_hashed_password, user_type) VALUES (?, ?, ?)");
         $stmt->bind_param("sss", $username, $hashedPassword, $userType);
@@ -341,17 +369,21 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['add_teacher'])) {
     }
 }
 
-// Handle edit request
+// Handle EDIT Teacher
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['edit_teacher'])) {
     $editId = intval($_POST['edit_teacher_id']);
-    $firstname = $_POST['edit_teacher_firstname'] ?? '';
-    $surname = $_POST['edit_teacher_surname'] ?? '';
-    $address = $_POST['edit_teacher_address'] ?? '';
-    $phone = $_POST['edit_teacher_phone'] ?? '';
-    $salary = $_POST['edit_salary'] ?? '';
+    $firstname = trim($_POST['edit_teacher_firstname'] ?? '');
+    $surname = trim($_POST['edit_teacher_surname'] ?? '');
+    $address = trim($_POST['edit_teacher_address'] ?? '');
+    $phone = trim($_POST['edit_teacher_phone'] ?? '');
+    $salary = trim($_POST['edit_teacher_salary'] ?? '');
 
     if (empty($firstname) || empty($surname) || empty($address) || empty($phone) || empty($salary)) {
         $error = "All fields are required for editing.";
+    } elseif (!preg_match("/^[0-9]{10}$/", $phone)) { // Ensure phone number is a 10-digit number
+        $error = "Phone number must be 10 digits.";
+    } elseif (!is_numeric($salary) || $salary <= 0) { // Ensure salary is a positive number
+        $error = "Salary must be a positive number.";
     } else {
         $stmt = $conn->prepare("UPDATE Teacher SET teacher_firstname=?, teacher_surname=?, teacher_address=?, teacher_phone_number=?, teacher_salary=? WHERE teacher_id=?");
         $stmt->bind_param("ssssdi", $firstname, $surname, $address, $phone, $salary, $editId);
@@ -369,21 +401,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['edit_teacher'])) {
 $teachers = $conn->query("SELECT * FROM Teacher");
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <title>Admin Page</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body>
-<div class="container col-6">
-    <?php if ($successMessage): ?>
-        <p class="text-success"><?= $successMessage ?></p>
-    <?php endif; ?>
-    <?php if ($error): ?>
-        <p class="text-danger"><?= $error ?></p>
-    <?php endif; ?>
 
+
+    <p>Manage Teachers</p>
     <button class="btn btn-primary mb-3" onclick="toggleteacherSection()">Manage Teachers</button>
 
     <!-- Add Teacher Form -->
@@ -458,7 +478,6 @@ $teachers = $conn->query("SELECT * FROM Teacher");
             <?php endwhile; ?>
         </table>
     </div>
-</div>
 
 <script>
 function toggleteacherSection() {
@@ -493,8 +512,7 @@ function cancelteacherEdit() {
 }
 </script>
 
-</body>
-</html>
+
 
 <!-- //////////////////////////////////////////////////////////////////////// -->
 <!-- Handles Students -->
@@ -511,18 +529,18 @@ if (isset($_GET['delete_student_id'])) {
     $stmt->close();
     
     
-     // 2. Delete from user table
+     //Delete from user table
     $stmt = $conn->prepare("DELETE FROM user WHERE user_id = (SELECT user_id FROM user_roles WHERE student_id = ? LIMIT 1)");
     $stmt->bind_param("i", $deleteId);
     $stmt->execute();
     $stmt->close();
              
-             // 3. Delete from student table
-    $stmt = $conn->prepare("DELETE FROM student WHERE student_id = ?");
+    //Delete from user_roles table
+    $stmt = $conn->prepare("DELETE FROM user_roles WHERE student_id = ?");
     $stmt->bind_param("i", $deleteId);
     $stmt->execute();
-    $stmt->close();
-             
+    $stmt->close();         
+
              // Commit transaction if all deletions are successful
     $conn->commit();
     $successMessage = "student deleted successfully.";
@@ -589,6 +607,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['edit_student'])) {
 
     if (empty($firstname) || empty($surname) || empty($address) || empty($phone)) {
         $error = "All fields are required for editing.";
+    } elseif (!preg_match("/^[0-9]{10}$/", $phone)) { // Ensure phone number is a 10-digit number
+        $error = "Phone number must be 10 digits.";
     } else {
         $stmt = $conn->prepare("UPDATE student SET student_firstname=?, student_surname=?, student_address=?, student_phone_number=?, class_id=? WHERE student_id=?");
         $stmt->bind_param("ssssii", $firstname, $surname, $address, $phone, $classId, $editId);
@@ -606,15 +626,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['edit_student'])) {
 $students = $conn->query("SELECT * FROM student");
 ?>
 
-<html lang="en">
-<body>
-<div class="container col-6">
-    <?php if ($successMessage): ?>
-        <p class="text-success"><?= $successMessage ?></p>
-    <?php endif; ?>
-    <?php if ($error): ?>
-        <p class="text-danger"><?= $error ?></p>
-    <?php endif; ?>
+
+    <p>Manage Students</p>
 
     <button class="btn btn-primary mb-3" onclick="togglestudentSection()">Manage students</button>
 
@@ -690,7 +703,7 @@ $students = $conn->query("SELECT * FROM student");
             <?php endwhile; ?>
         </table>
     </div>
-</div>
+
 
 <script>
 function togglestudentSection() {
@@ -725,8 +738,6 @@ function cancelstudentEdit() {
 }
 </script>
 
-</body>
-</html>
 
 
 
@@ -743,11 +754,17 @@ if (isset($_GET['delete_parent_id'])) {
     $stmt->close();
     
     
-     // 2. Delete from user table
+     //Delete from user table
     $stmt = $conn->prepare("DELETE FROM user WHERE user_id = (SELECT user_id FROM user_roles WHERE parent_id = ? LIMIT 1)");
     $stmt->bind_param("i", $deleteId);
     $stmt->execute();
     $stmt->close();
+
+    //Delete from user_roles table
+    $stmt = $conn->prepare("DELETE FROM user_roles WHERE Pasrent_id = ?");
+    $stmt->bind_param("i", $deleteId);
+    $stmt->execute();
+    $stmt->close();         
              
 
              // Commit transaction if all deletions are successful
@@ -769,9 +786,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['add_parent'])) {
     $hashedPassword = password_hash($plainPassword, PASSWORD_DEFAULT);
 
 
-    if (empty($firstname) || empty($surname) || empty($address) || empty($phone) || empty($email)) { // <-- added email check
+    if (empty($firstname) || empty($surname) || empty($address) || empty($phone) ||  empty($plainPassword)) {
         $error = "All fields are required.";
-    } else {
+    } elseif (!preg_match("/^[0-9]{10}$/", $phone)) { // Ensure phone number is a 10-digit number
+        $error = "Phone number must be 10 digits.";
+    } else{
+        $hashedPassword = password_hash($plainPassword, PASSWORD_DEFAULT);
+
         // 1. Insert into `user`
         $stmt = $conn->prepare("INSERT INTO user (username, user_hashed_password, user_type) VALUES (?, ?, ?)");
         $stmt->bind_param("sss", $username, $hashedPassword, $userType);
@@ -815,8 +836,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['edit_parent'])) {
     $phone = $_POST['edit_parent_phone'] ?? '';
     $email = $_POST['edit_email'] ?? ''; // <-- added
 
-    if (empty($firstname) || empty($surname) || empty($address) || empty($phone) || empty($email)) { // <-- added email check
-        $error = "All fields are required for editing.";
+    if (empty($firstname) || empty($surname) || empty($address) || empty($phone)) {
+        $error = "All fields are required.";
+    } elseif (!preg_match("/^[0-9]{10}$/", $phone)) { // Ensure phone number is a 10-digit number
+        $error = "Phone number must be 10 digits.";
     } else {
         $stmt = $conn->prepare("UPDATE parent_guardian SET parent_firstname=?, parent_surname=?, parent_address=?, parent_phone_number=?, parent_email=? WHERE parent_id=?"); // <-- modified
         $stmt->bind_param("sssssi", $firstname, $surname, $address, $phone, $email, $editId); // <-- modified
@@ -834,15 +857,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['edit_parent'])) {
 $parents = $conn->query("SELECT * FROM parent_guardian");
 ?>
 
-<html lang="en">
-<body>
-<div class="container col-6">
-    <?php if ($successMessage): ?>
-        <p class="text-success"><?= $successMessage ?></p>
-    <?php endif; ?>
-    <?php if ($error): ?>
-        <p class="text-danger"><?= $error ?></p>
-    <?php endif; ?>
+
+    <P>Manage Parents</p>
 
     <button class="btn btn-primary mb-3" onclick="toggleparentSection()">Manage parents</button>
 
@@ -918,7 +934,6 @@ $parents = $conn->query("SELECT * FROM parent_guardian");
             <?php endwhile; ?>
         </table>
     </div>
-</div>
 
 <script>
 function toggleparentSection() {
@@ -952,9 +967,6 @@ function cancelparentEdit() {
 }
 </script>
 
-</body>
-</html>
-
 
 <!-- //////////////////////////////////////////////////////////////////////// -->
 <!-- Handles admins -->
@@ -971,11 +983,17 @@ if (isset($_GET['delete_admin_id'])) {
     $stmt->close();
     
     
-     // 2. Delete from user table
+     //Delete from user table
     $stmt = $conn->prepare("DELETE FROM user WHERE user_id = (SELECT user_id FROM user_roles WHERE admin_id = ? LIMIT 1)");
     $stmt->bind_param("i", $deleteId);
     $stmt->execute();
     $stmt->close();
+
+    //Delete from user_roles table
+    $stmt = $conn->prepare("DELETE FROM user_roles WHERE admin_id = ?");
+    $stmt->bind_param("i", $deleteId);
+    $stmt->execute();
+    $stmt->close();         
              
 
              // Commit transaction if all deletions are successful
@@ -996,9 +1014,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['add_admin'])) {
     $username = ($firstname . $surname);
     $hashedPassword = password_hash($plainPassword, PASSWORD_DEFAULT);
 
-
-    if (empty($firstname) || empty($surname) || empty($address) || empty($phone) || empty($salary)) {
+    if (empty($firstname) || empty($surname) || empty($address) || empty($phone)|| empty($salary) ) {
         $error = "All fields are required.";
+    } elseif (!preg_match("/^[0-9]{10}$/", $phone)) { // Ensure phone number is a 10-digit number
+        $error = "Phone number must be 10 digits.";
+    } elseif (!is_numeric($salary) || $salary <= 0) { // Ensure salary is a positive number
+        $error = "Salary must be positive.";
     } else {
         // 1. Insert into `user`
         $stmt = $conn->prepare("INSERT INTO user (username, user_hashed_password, user_type) VALUES (?, ?, ?)");
@@ -1041,10 +1062,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['edit_admin'])) {
     $surname = $_POST['edit_admin_surname'] ?? '';
     $address = $_POST['edit_admin_address'] ?? '';
     $phone = $_POST['edit_admin_phone'] ?? '';
-    $salary = $_POST['edit_salary'] ?? '';
+    $salary = $_POST['edit_admin_salary'] ?? '';
 
     if (empty($firstname) || empty($surname) || empty($address) || empty($phone) || empty($salary)) {
         $error = "All fields are required for editing.";
+    } elseif (!preg_match("/^[0-9]{10}$/", $phone)) { // Ensure phone number is a 10-digit number
+        $error = "Phone number must be 10 digits.";
+    } elseif (!is_numeric($salary) || $salary <= 0) { // Ensure salary is a positive number
+        $error = "Salary must be a positive number.";
     } else {
         $stmt = $conn->prepare("UPDATE admin SET admin_firstname=?, admin_surname=?, admin_address=?, admin_phone_number=?, admin_salary=? WHERE admin_id=?");
         $stmt->bind_param("ssssdi", $firstname, $surname, $address, $phone, $salary, $editId);
@@ -1062,21 +1087,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['edit_admin'])) {
 $admins = $conn->query("SELECT * FROM admin");
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <title>Admin Page</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body>
-<div class="container col-6">
-    <?php if ($successMessage): ?>
-        <p class="text-success"><?= $successMessage ?></p>
-    <?php endif; ?>
-    <?php if ($error): ?>
-        <p class="text-danger"><?= $error ?></p>
-    <?php endif; ?>
-
+    <p>Manage Admin</p>
     <button class="btn btn-primary mb-3" onclick="toggleadminSection()">Manage admins</button>
 
     <!-- Add admin Form -->
@@ -1151,7 +1162,7 @@ $admins = $conn->query("SELECT * FROM admin");
             <?php endwhile; ?>
         </table>
     </div>
-</div>
+    
 
 <script>
 function toggleadminSection() {
@@ -1201,8 +1212,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['edit_class'])) {
     $editId = intval($_POST['edit_class_id']);
     $name = trim($_POST['edit_class_name'] ?? '');
     $capacity = intval($_POST['edit_class_capacity'] ?? 0);
-    $teacher_id = $_POST['edit_teacher_id'] !== '' ? intval($_POST['edit_teacher_id']) : null;
-    $ta_id = $_POST['edit_ta_id'] !== '' ? intval($_POST['edit_ta_id']) : null;
+    $teacher_id = $_POST['edit_teacher_id_class'] !== '' ? intval($_POST['edit_teacher_id_class']) : null;
+    $ta_id = $_POST['edit_ta_id_class'] !== '' ? intval($_POST['edit_ta_id_class']) : null;
 
     if (empty($name) || $capacity <= 0) {
         $error = "All fields are required with valid values.";
@@ -1225,7 +1236,6 @@ $classes = $conn->query("SELECT * FROM class");
 $teachers = $conn->query("SELECT teacher_id, teacher_firstname FROM teacher");
 $tas = $conn->query("SELECT ta_id, ta_firstname FROM teaching_assistant");
 ?>
-<div class="container col-6">
 <hr>
 <button class="btn btn-primary mb-3" onclick="toggleClassSection()">Manage Classes</button>
 
@@ -1237,8 +1247,8 @@ $tas = $conn->query("SELECT ta_id, ta_firstname FROM teaching_assistant");
         <input type="hidden" id="edit_class_id" name="edit_class_id">
         Class Name: <input class="form-control" type="text" id="edit_class_name" name="edit_class_name"><br>
         Capacity: <input class="form-control" type="number" id="edit_class_capacity" name="edit_class_capacity" min="1"><br>
-        Teacher ID: <input class="form-control" type="number" id="edit_teacher_id" name="edit_teacher_id"><br>
-        TA ID: <input class="form-control" type="number" id="edit_ta_id" name="edit_ta_id"><br>
+        Teacher ID: <input class="form-control" type="number" id="edit_teacher_id_class" name="edit_teacher_id_class"><br>
+        TA ID: <input class="form-control" type="number" id="edit_ta_id_class" name="edit_ta_id_class"><br>
         <input class="btn btn-warning" type="submit" value="Update Class">
         <button class="btn btn-secondary" type="button" onclick="cancelClassEdit()">Cancel</button>
     </form>
@@ -1277,6 +1287,13 @@ $tas = $conn->query("SELECT ta_id, ta_firstname FROM teaching_assistant");
         <?php endwhile; ?>
     </table>
 </div>
+<?php if ($successMessage): ?>
+        <p class="text-success"><?= $successMessage ?></p>
+    <?php endif; ?>
+    <?php if ($error): ?>
+        <p class="text-danger"><?= $error ?></p>
+    <?php endif; ?>
+</div>
 </div>
 <script>
 function toggleClassSection() {
@@ -1294,8 +1311,8 @@ function showClassEditForm(id, name, capacity, teacher_Id, ta_Id) {
     document.getElementById("edit_class_id").value = id;
     document.getElementById("edit_class_name").value = name;
     document.getElementById("edit_class_capacity").value = capacity;
-    document.getElementById("edit_teacher_id").value = teacher_Id !== null ? teacher_Id : '';
-    document.getElementById("edit_ta_id").value = ta_Id !== null ? ta_Id : ''; 
+    document.getElementById("edit_teacher_id_class").value = teacher_Id !== null ? teacher_Id : '';
+    document.getElementById("edit_ta_id_class").value = ta_Id !== null ? ta_Id : ''; 
 
     document.getElementById("editClassFormContainer").style.display = "block";
     document.getElementById("classTableContainer").style.display = "none";
@@ -1307,9 +1324,6 @@ function cancelClassEdit() {
     document.getElementById("classTableContainer").style.display = "block";
 }
 </script>
-
-
-
 
 <?php
 $conn->close();
