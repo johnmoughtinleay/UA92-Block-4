@@ -33,6 +33,26 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 $_SESSION['username'] = $inputUsername;
                 $_SESSION['user_type'] = $user_type;
 
+                        // Fetch ID from student or parent table
+        if ($user_type === 'student') {
+            $stmt_id = $conn->prepare("SELECT student_id FROM user_roles WHERE user_id = (SELECT user_id FROM user WHERE username = ?)");
+            $stmt_id->bind_param("s", $inputUsername);
+            $stmt_id->execute();
+            $stmt_id->bind_result($student_id);
+            if ($stmt_id->fetch()) {
+                $_SESSION['student_id'] = $student_id;
+            }
+            $stmt_id->close();
+        } elseif ($user_type === 'parent') {
+            $stmt_id = $conn->prepare("SELECT parent_id FROM user_roles WHERE user_id = (SELECT user_id FROM user WHERE username = ?)");
+            $stmt_id->bind_param("s", $inputUsername);
+            $stmt_id->execute();
+            $stmt_id->bind_result($parent_id);
+            if ($stmt_id->fetch()) {
+                $_SESSION['parent_id'] = $parent_id;
+            }
+            $stmt_id->close();
+        }
                 // Redirect based on role
                 switch ($user_type) {
                     case 'teacher':
@@ -71,8 +91,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <head>
     <meta charset="UTF-8">
     <title>St Alphonsus Primary School - Login</title>
-    <link rel="stylesheet" href="css/Main_style.css">
-    <link rel="stylesheet" href="Website_form.css">
+    <link rel="stylesheet" href="School.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body>
